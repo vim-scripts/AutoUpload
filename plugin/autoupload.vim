@@ -2,7 +2,7 @@
 " File:        autoupload.vim
 " Author:      Mariusz Gniazdowski (mrg at risp.pl)
 " Last Change: Jan 28 23:23:23 CET 2005
-" Version:     1.0
+" Version:     1.01
 "
 " How to use
 " 1. Create autoupload.info file
@@ -29,6 +29,9 @@
 "
 " Worth to read
 " :help netrw
+"
+" Changes:
+" 1.01 - fixed bug when file name bbaa was recognised as matching aabbcc
 "
 " ============================================================================
 
@@ -68,7 +71,7 @@ function MG_AutoUpload()
 		let line = getline(i)
 		" File name is every char up to '|'
 		let fileName = matchstr(line,"[^|]*")
-		let idx = match(fileName, actFileName."[[:space:]]*$")
+		let idx = match(fileName, "^[[:space:]]*".actFileName."[[:space:]]*$")
 		if idx>=0
 			break
 		endif
