@@ -1,0 +1,91 @@
+This is a mirror of http://www.vim.org/scripts/script.php?script_id=1192
+
+Usage:
+1. Create autoupload.info (or .autoupload.info) file. Files like those are called 'maps'.
+
+2. Each line in map is an entry in format:
+	filename : {ftp|dav|scp|etc...}://address
+		or
+	filename | {ftp|dav|scp|etc...}://address
+
+   >> Address must end with file name! <<
+   Example entry:
+   localfile.txt | scp://me@mymachine.com/tmp/remfile.txt
+
+3. Or as an alternative:
+    - to first or last lines of buffer to upload add pattern:
+               [text]{white}autoupload:remotepath1[;remotepath2[...]]
+ Example line:
+ autoupload:scp://me@mymachine.com/tmp/remfile.txt ;ftp://a@b.com/c.txt
+
+4. Then while editing some file pressing <Leader>up ('u' key and 'p' key) will cause script to:
+   - read autoupload.info (.autoupload.info) from dir in which active buffer is stored (or from absolute path if customized that way), or scan first and last lines of active buffer,
+   - store buffer into remote location(s) extracted.
+
+If no entry for actual buffer is found in autoupload.info, then .autoupload.info is examined.
+
+Customization:
+
+g:autoUploadMaps (default: "autoupload.info:.autoupload.info")
+
+File names/paths to maps.
+
+Can contain multiple file names separated  by : or |  Files will be examined in order given in this variable.  Paths can be:
+- absolute,
+- realtive - they will be appended to path in which actual buffer is stored!
+
+g:autoUploadScanLines (default: 3)
+
+Script  can  scan last  and  first lines of a buffer for pattern:
+[text]{white}autoupload:remotepath1[;remotepath2[...]]
+Fields are separated by ';'  or  '|'.  ';' is used because ':' is always a part of protocol for example ftp://... 
+This variable  contains number of  lines  to scan.
+
+g:autoUploadModelineStart (default: 'autoupload:')
+
+Pattern which 'modeline' should begin with. Can contain regex.
+
+g:autoUploadUseBuffer (default: 1, possible: 0, 1, 2)
+
+If  g:autoUploadUseBuffer  is  set to 0, then no scan is done.
+If  g:autoUploadUseBuffer>g:autoUploadUseMaps then  script will scan  buffer  before  maps.
+If g:autoUploadUseBuffer<=g:autoUploadUseMaps then  script will scan  maps  before  buffer.
+
+g:autoUploadUseMaps (default: 1, possible: 0, 1, 2)
+If  g:autoUploadUseMaps is set to 0 , then no no maps are searched.
+If g:autoUploadUseMaps=>g:autoUploadUseBuffer then  script will  scan  maps before  buffer.
+If  g:autoUploadUseMaps<g:autoUploadUseBuffer then  script will  scan  buffer before  maps.
+
+g:autoUploadStopAfterFirstUpload (default: 1)
+
+If set to 1 then  maximum one upload  will be done  no matter  how many maps will  have proper entries  and  how  many proper entries will be in one map. In  other  words: Find first remote  location that is assigned to actual buffer, use it and return to editor.  This one variable turns off all multiple upload possibilities.
+
+g:autoUploadStopAfterFirstMap	(default: 1)
+
+If 1, then processing of maps will stop after first  map  that  had  at  least one matching entry.  So you can assign  multiple remote locations to one file using one map  and  if variable g:autoUploadStopAfterFirstUpload  will be set to 0 then multiple uploads of the same file will be taken according to data in first map that has matching entry.
+
+Combinations of two last options:
+
+g:autoUploadStopAfterFirstUpload = 0
+g:autoUploadStopAfterFirstMap	= 1
+
+This will do multiple uploads to addresses taken from only one map  ( first one that has some match).
+
+g:autoUploadStopAfterFirstUpload = 0
+g:autoUploadStopAfterFirstMap	= 0
+
+This will  upload  current  buffer  to  every assigned remote location - multiple locations per map and multiple maps will be used.
+
+:call MG_AutoUpload()		Map this to some key combination
+
+Example_customization:
+	let g:autoUploadMaps = ".autoupload.info:/root/.remote.inf"
+	let g:autoUploadStopAfterFirstUpload = 0
+	nnoremap <F12> :call MG_AutoUpload()<CR>
+
+Worth_to_read:
+:help netrw
+
+Warning:
+Global map files are dangerous because file names can repeat (index.php main.c, etc). You should use it for special cases only.
+
