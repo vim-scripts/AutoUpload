@@ -1,8 +1,8 @@
 "=============================================================================
 " File:        autoupload.vim
 " Author:      Mariusz Gniazdowski (mrg at risp.pl)
-" Last Change: Jan 30 03:23:23 CET 2005
-" Version:     1.1
+" Last Change: Mon Jan 31 02:26:10 CET 2005
+" Version:     1.2
 "
 " Usage:
 " 1. Create autoupload.info (or .autoupload.info) file. Files like those are
@@ -23,6 +23,10 @@
 "      buffer is stored (or from absolute path if customized that way)
 "    - store actual buffer in remote location according to entry in map.
 "
+" 4. Or as an alternative:
+"    - to first or last lines of buffer to upload add pattern:
+" 		[text]{white}autoupload:remotepath1[;remotepath2[...]]
+"
 " If no entry for actual buffer is found in autoupload.info, then
 " .autoupload.info is examined.
 "
@@ -39,7 +43,38 @@
 " 				- realtive - they will be appended to path in
 " 				which actual buffer is stored!
 "
-" g:autoUploadStopAfterFirstUpload (default: 1)
+" g:autoUploadScanLines (default: 3)
+" 				Script  can  scan last  and  first lines of a
+" 				buffer for pattern:
+" 		[text]{white}autoupload:remotepath1[;remotepath2[...]]
+" 				Fields are separated by ';'  or  '|'.  ';' is
+" 				used because ':' is always a part of protocol
+" 				name, for example ftp://...
+"
+"				This  variable  contains number of  lines  to
+"				scan.
+"
+" g:autoUploadModelineStart (default: 'autoupload:')
+" 				Pattern which modeline should begin with. Can
+" 				contain regex.
+"
+" g:autoUploadUseBuffer (default: 1, possible: 0, 1, 2)
+" 				If  g:autoUploadUseBuffer  is  set to 0, then
+" 				no scan is done.
+" 				If  g:autoUploadUseBuffer>g:autoUploadUseMaps
+" 				then  script will scan  buffer  before  maps.
+" 				If g:autoUploadUseBuffer<=g:autoUploadUseMaps
+" 				then  script will scan  maps  before  buffer.
+" 				
+" g:autoUploadUseMaps (default: 1, possible: 0, 1, 2)
+" 				If  g:autoUploadUseMaps is set to 0 , then no
+" 				no maps are searched.
+" 				If g:autoUploadUseMaps=>g:autoUploadUseBuffer
+" 				then  script will  scan  maps before  buffer.
+" 				If  g:autoUploadUseMaps<g:autoUploadUseBuffer
+" 				then  script will  scan  buffer before  maps.
+"
+" g:autoUploadStopAfterFirstUpload (default: 1, possible: 0, 1)
 " 				If is set to 1 then  maximum one upload  will
 " 				be done  no matter  now many maps  will  have
 " 				proper entries  and  how  many proper entries
@@ -49,7 +84,7 @@
 " 				return to editor. This one variable turns off
 " 				all multiple upload possibilities.
 "
-" g:autoUploadStopAfterFirstMap	(default: 1)
+" g:autoUploadStopAfterFirstMap	(default: 1, possible: 0, 1)
 "				If 1, then processing of maps will stop after
 "				first  map  that  had  at  least one matching
 "				entry.
@@ -87,6 +122,9 @@
 " 	only.
 "
 " Changes:
+" 1.2	- remote locations can now be contained in buffers (in 'modelines')
+" 	- fixed bug that maked uploading of file with name containing spaces
+" 	  impossible
 " 1.1  	- multiple file names supported
 " 	- absolute paths supported
 " 	- file format change - colums can be separated by ':' now,
@@ -114,39 +152,161 @@ endif
 if !exists('g:autoUploadStopAfterFirstMap')
 	let g:autoUploadStopAfterFirstMap = 1
 endif
+if !exists('g:autoUploadUseBuffer')
+	let g:autoUploadUseBuffer = 1
+endif
+if !exists('g:autoUploadUseMaps')
+	let g:autoUploadUseMaps = 2
+endif
+if !exists('g:autoUploadScanLines')
+	let g:autoUploadScanLines = 3
+endif
+if !exists('g:autoUploadModelineStart')
+	let g:autoUploadModelineStart = "autoupload:"
+endif
 
 " Default mapping
 nnoremap <Leader>up :call MG_AutoUpload()<CR>
 " This one would be nice too
 "nnoremap <Leader><UP> :call MG_AutoUpload()<CR>
 
+
+"
+" Start operation of upload
+" First decide wheather to start scanning buffer or maps first.
+" Then start that operations.
+"
+function MG_AutoUpload() " {{{1
+	let s:wasMatchInBuffer = 0
+	" Scan buffer first?
+	if (g:autoUploadUseBuffer > g:autoUploadUseMaps) && ( g:autoUploadUseBuffer != 0)
+		call <SID>ScanBuffer()
+	endif
+
+	if g:autoUploadUseMaps != 0
+		call <SID>SearchForMaps()
+	endif
+
+	if (g:autoUploadUseBuffer <= g:autoUploadUseMaps) && ( g:autoUploadUseBuffer != 0)
+		call <SID>ScanBuffer()
+	endif
+endf " 1}}}
+
+"
+" Searches for modelines and starts processing of each of them
+"
+function <SID>ScanBuffer() " {{{1
+	" Calculate number of top lines
+	if (line("$") - g:autoUploadScanLines) < 0
+		let topLineCount = line("$")
+	else
+		let topLineCount = g:autoUploadScanLines
+	endif
+	" Number of bottom lines
+	if (line("$") - g:autoUploadScanLines) < 0
+		let bottomLineCount = 0
+	elseif ( (line("$") - g:autoUploadScanLines) - g:autoUploadScanLines) < 0
+		let bottomLineCount = line("$") - g:autoUploadScanLines
+	else
+		let bottomLineCount = g:autoUploadScanLines
+	endif
+
+	" Top lines
+	let i = 1
+	while i <= topLineCount
+		call <SID>ProcessBufferLine(getline(i))
+		let i=i+1
+		if (g:autoUploadStopAfterFirstUpload == 1) && (s:wasMatchInBuffer == 1)
+			return
+		endif
+	endwhile
+
+	" Bottom lines
+	let i = line("$")
+	while i > (line("$") - bottomLineCount)
+		call <SID>ProcessBufferLine(getline(i))
+		let i=i-1
+		if (g:autoUploadStopAfterFirstUpload == 1) && (s:wasMatchInBuffer == 1)
+			return
+		endif
+	endwhile
+endf " 1}}}
+
+"
+" Processes line in format:
+" [text]{white}autoupload:remotepath1[;remotepath2[...]]
+"
+" [text] is defined as 'not white'
+"
+function <SID>ProcessBufferLine(line) " {{{1
+	let start_garbage = matchstr(a:line,"^[^[:space:]]*[[:space:]][[:space:]]*".g:autoUploadModelineStart)
+	if start_garbage == ""
+		let start_garbage = matchstr(a:line,"^[[:space:]]*".g:autoUploadModelineStart)
+		if start_garbage == ""
+			return
+		endif
+	endif
+
+	" Loop thru paths if any
+	let sum_matched_idx = strlen(start_garbage) - 1
+	while 1
+		" Skip last ';' or '|'
+		let sum_matched_idx = sum_matched_idx + 1
+		" Get everything until '\n'
+		let destAdr = matchstr(a:line, "[^;|]\\+", sum_matched_idx)
+		" No match?
+		if match(destAdr,"^[[:space:]]*$") >= 0
+			return 0
+		endif
+		let sum_matched_idx = sum_matched_idx + strlen(destAdr)
+		" Trim
+		let destAdr = substitute(destAdr,"^[[:space:]]*", "", "")
+		let v:errmsg = ""
+		exec ":Nwrite ". escape(escape(destAdr," \t\\"), '\')
+		if v:errmsg != "" 
+			echomsg v:errmsg
+			sl 2000m
+		else
+			echomsg "Written at: `" . destAdr . "' (address taken from buffer)"
+		endif
+		" Each, even unsuccessful try of upload counts
+		let s:wasMatchInBuffer = 1
+		if g:autoUploadStopAfterFirstUpload == 1
+			break
+		endif
+	endw
+endfunction " 1}}}
+
 "
 " Walk thru every given map and try to find
 " there a mach for actual buffer
 "
-function MG_AutoUpload() " {{{1
+function <SID>SearchForMaps() " {{{1
 	let baseDir = expand("%:p:h") . "/"
 	let actFileName = expand("%:t")
 	let sum_matched_idx = -1 
-	let infoFileName = ""
+	let mapFileName = ""
 	let checkedFiles = ""
 	let wasMatch = 0
 	while 1
 		" Skip last ':' or '|'
 		let sum_matched_idx = sum_matched_idx + 1
 		" Get everything until ':' or '|'
-		let infoFileName = matchstr(g:autoUploadMaps, "^[^|:]\\+", sum_matched_idx)
+		let mapFileName = matchstr(g:autoUploadMaps, "^[^|:]\\+", sum_matched_idx)
 		" No match -> whole list is processed -> exit
-		if match(infoFileName,"^[[:space:]]*$") >= 0
-			if wasMatch == 0
-				echomsg "No entry found for actual buffer: `".actFileName."' (examined files: " . checkedFiles . ")"
+		if match(mapFileName,"^[[:space:]]*$") >= 0
+			if (wasMatch == 0) && (s:wasMatchInBuffer == 0)
+				if g:autoUploadUseBuffer != 0
+					let checkedFiles = checkedFiles. " and buffer content"
+				endif
+				echomsg "No entry found for actual buffer: `".actFileName."' (examined files:" . checkedFiles . ")"
 			endif
 			break
 		endif
-		let sum_matched_idx = sum_matched_idx + strlen(infoFileName)
+		let sum_matched_idx = sum_matched_idx + strlen(mapFileName)
 		" Process that match and optionaly stop walking thru rest 
 		" of maps
-		if <SID>ProcessInfoFile(infoFileName) > 0 
+		if <SID>ProcessMapFile(mapFileName) > 0 
 			" Stop after first map that uploaded something?
 			if (g:autoUploadStopAfterFirstMap == 1) || (g:autoUploadStopAfterFirstUpload == 1)
 				break
@@ -154,7 +314,7 @@ function MG_AutoUpload() " {{{1
 				let wasMatch = 1
 			endif
 		endif
-		let checkedFiles = checkedFiles . "`" . infoFileName . "' "
+		let checkedFiles = checkedFiles . " `" . mapFileName . "'"
 	endw
 endf " 1}}}
 
@@ -166,18 +326,18 @@ endf " 1}}}
 " 3. If succeded, then it calls Nwrite to store actual buffer under
 "    remote address
 "
-function <SID>ProcessInfoFile(infoFileName) " {{{1
+function <SID>ProcessMapFile(mapFileName) " {{{1
 	" Prepend only non absolute filenames
-	if a:infoFileName[0] == "/" || a:infoFileName[0] == "~"
-		let fullInfoFilePath = a:infoFileName
+	if a:mapFileName[0] == "/" || a:mapFileName[0] == "~"
+		let fullInfoFilePath = a:mapFileName
 	else
 		" Prepend with directory in which actual buffer is stored (not
 		" with current working directory!)
-		let fullInfoFilePath = expand("%:p:h") . "/" . a:infoFileName
+		let fullInfoFilePath = expand("%:p:h") . "/" . a:mapFileName
 	endif
 
 	if !filereadable(fullInfoFilePath)
-		" echomsg "Can't read `" . a:infoFileName . "' file"
+		" echomsg "Can't read `" . a:mapFileName . "' file"
 		return 0
 	endif
 
@@ -225,19 +385,18 @@ function <SID>ProcessInfoFile(infoFileName) " {{{1
 				return 1
 			endif
 			let sum_matched_idx = sum_matched_idx + strlen(destAdr)
+			" Trim
+			let destAdr = substitute(destAdr,"^[[:space:]]*", "", "")
 			let v:errmsg = ""
-			exec ":Nwrite ". destAdr
+			exec ":Nwrite ". escape(escape(destAdr," \t\\"),'\')
 			if v:errmsg != "" 
 				echo v:errmsg
 				sl 2000m
 			else
-				echomsg "Written at: `" . destAdr . "' (address taken from file: `".a:infoFileName."')"
+				echomsg "Written at: `" . destAdr . "' (address taken from file: `".a:mapFileName."')"
 			endif
 		endw
 	endif
 
 	return wasMatch
 endf " 1}}}
-
-
-
